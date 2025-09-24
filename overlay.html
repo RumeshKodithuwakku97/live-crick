@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Cricket Score</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-image: url('background.jpg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    .overlay {
+      background-color: rgba(0,0,0,0.45);
+      color: #fff;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      width: 100%;
+      max-width: 800px;
+      margin-bottom: 1.5rem;
+      backdrop-filter: blur(5px);
+    }
+
+    .team-logo {
+      height: 50px;
+      width: 50px;
+      object-fit: contain;
+      border-radius: 50%;
+      border: 2px solid #fff;
+    }
+
+    #ball-by-ball {
+      height: 160px;
+      overflow-y: auto;
+      padding-left: 1rem;
+      padding-right: 1rem;
+      border-top: 1px solid rgba(255,255,255,0.3);
+      margin-top: 0.5rem;
+    }
+
+    #ball-by-ball li {
+      margin-bottom: 0.25rem;
+      font-weight: 500;
+    }
+
+    #ball-by-ball::-webkit-scrollbar {
+      width: 6px;
+    }
+    #ball-by-ball::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.5);
+      border-radius: 3px;
+    }
+
+    .highlight {
+      background-color: rgba(255, 215, 0, 0.8);
+      padding: 2px 6px;
+      border-radius: 6px;
+      animation: flash 0.6s ease-in-out 1;
+      display: inline-block;
+      font-weight: bold;
+    }
+
+    @keyframes flash {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    /* Score animation */
+    .score-animate {
+      transition: transform 0.3s, color 0.3s;
+    }
+
+    @media (max-width: 640px) {
+      .overlay {
+        padding: 1rem;
+      }
+      .team-logo {
+        height: 40px;
+        width: 40px;
+      }
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center p-4 min-h-screen">
+
+  <!-- Match Card -->
+  <div class="overlay">
+    <p id="match-status" class="text-center text-xl font-semibold mb-4">Loading match data...</p>
+
+    <!-- Teams -->
+    <div class="flex justify-between items-center mb-4">
+      <div class="flex items-center space-x-3">
+        <img src="teamA.png" alt="Team A" class="team-logo">
+        <span id="team1" class="text-2xl font-bold">Team A</span>
+      </div>
+      <span id="score1" class="text-2xl font-bold score-animate">0/0 (0.0 ov)</span>
+    </div>
+
+    <div class="flex justify-between items-center mb-4">
+      <div class="flex items-center space-x-3">
+        <img src="teamB.png" alt="Team B" class="team-logo">
+        <span id="team2" class="text-2xl font-bold">Team B</span>
+      </div>
+      <span id="score2" class="text-2xl font-bold score-animate">0/0 (0.0 ov)</span>
+    </div>
+
+    <!-- Ball-by-ball feed -->
+    <h2 class="text-lg font-semibold mt-4 mb-2">Ball-by-Ball</h2>
+    <ul id="ball-by-ball"></ul>
+  </div>
+
+  <!-- Run Rate Chart -->
+  <div class="overlay">
+    <h2 class="text-lg font-semibold mb-4">Run Rate Graph</h2>
+    <canvas id="runRateChart"></canvas>
+  </div>
+
+  <script>
+    const API_KEY = '262c11207cmsh802238797275a9cp18571fjsn9e105787fc51';
+    const API_URL = 'https://cricketapi.p.rapidapi.com/matches';
+
+    const team1El = document.getElementById("team1");
+    const team2El = document.getElementById("team2");
+    const score1El = document.getElementById("score1");
+    const score2El = document.getElementById("score2");
+    const statusEl = document.getElementById("match-status");
+    const ballList = document.getElementById("ball-by-ball");
+    const team1Logo = document.querySelector('img[alt="Team A"]');
+    const team2Logo = document.querySelector('img[alt="Team B"]');
+
+    const ctx = document.getElementById('runRateChart').getContext('2d');
+    const runRateChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Run Rate', data: [], borderColor: 'rgba(59,130,246,1)', backgroundColor: 'rgba(59,130,246,0.2)', tension: 0.3 }] },
+      options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: '#fff' } }, x: { ticks: { color: '#fff' } } }, plugins: { legend: { labels: { color: '#fff' } } } }
+    });
+
+    function animateScore(element, newValue) {
+      element.textContent = newValue;
+      element.classList.add('score-animate');
+      element.style.transform = "scale(1.3)";
+      element.style.color = "#FFD700";
+      setTimeout(() => {
+        element.style.transform = "scale(1)";
+        element.style.color = "#fff";
+      }, 300);
+    }
+
+    function updateUI(data) {
+      if(data.team1.logo) team1Logo.src = data.team1.logo;
+      if(data.team2.logo) team2Logo.src = data.team2.logo;
+
+      team1El.textContent = data.team1.name;
+      team2El.textContent = data.team2.name;
+
+      animateScore(score1El, `${data.team1.runs}/${data.team1.wickets} (${data.team1.overs} ov)`);
+      animateScore(score2El, `${data.team2.runs}/${data.team2.wickets} (${data.team2.overs} ov)`);
+
+      statusEl.textContent = data.status;
+
+      ballList.innerHTML = "";
+      data.balls.forEach((ball, index) => {
+        const li = document.createElement("li");
+        li.textContent = ball;
+        if(index === data.balls.length - 1) li.classList.add("highlight");
+        ballList.appendChild(li);
+      });
+      ballList.scrollTop = ballList.scrollHeight;
+
+      runRateChart.data.labels = data.runRateHistory.map((_, i) => `Over ${i+1}`);
+      runRateChart.data.datasets[0].data = data.runRateHistory;
+      runRateChart.update();
+    }
+
+    async function fetchLiveScore() {
+      try {
+        const response = await fetch(API_URL, {
+          method: 'GET',
+          headers: { 'X-RapidAPI-Key': API_KEY, 'X-RapidAPI-Host': 'cricketapi.p.rapidapi.com' }
+        });
+        const result = await response.json();
+
+        const match = result.matches[0];
+        const matchData = {
+          status: match.status || "Live",
+          team1: { name: match.teamA.short_name || "Team A", runs: match.teamA.runs || 0, wickets: match.teamA.wickets || 0, overs: match.teamA.overs || 0, logo: match.teamA.logo || null },
+          team2: { name: match.teamB.short_name || "Team B", runs: match.teamB.runs || 0, wickets: match.teamB.wickets || 0, overs: match.teamB.overs || 0, logo: match.teamB.logo || null },
+          balls: match.balls || [],
+          runRateHistory: match.runRateHistory || []
+        };
+        updateUI(matchData);
+      } catch(error) { console.error("Error fetching live score:", error); }
+    }
+
+    fetchLiveScore();
+    setInterval(fetchLiveScore, 15000);
+  </script>
+</body>
+</html>
